@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Self, ClassVar, get_args, get_origin, Annotated, get_type_hints
+from typing import Annotated, Any, ClassVar, Self, get_args, get_origin, get_type_hints
+
 from typing_extensions import Self
 
-from .query import (
-    WhereQuery,
-    CreateTableQueryBuilder,
-    InsertQueryBuilder,
-    SelectQueryBuilder,
-    UpdateQueryBuilder,
-)
-from .utils import Missing, eval_annotation
 from .column import Column, ColumnBuilder
+from .query import CreateTableQueryBuilder, InsertQueryBuilder, SelectQueryBuilder, UpdateQueryBuilder
+from .utils import Missing, eval_annotation
+from .where_query import WhereQuery
+
+__all__ = ("TableMetadata", "Table")
 
 
 class TableMetadata:
@@ -27,7 +25,7 @@ class Table:
     def __init_subclass__(cls, *, table_name: str | None = None) -> None:
         columns: list[Column[Any, Any]] = []
 
-        for key, ann in get_type_hints(cls).items():
+        for key, ann in get_type_hints(cls, include_extras=True).items():
             if key.startswith("_"):
                 continue
 
@@ -42,9 +40,9 @@ class Table:
             else:
                 column_ty: type[Column[Any, Any]] = ann
                 (db_ty, ty) = get_args(column_ty)
-                column_builder = ColumnBuilder[Any]()
+                column_builder = ColumnBuilder[Any]().type(ty)
 
-            column_builder = column_builder.name(key).type(ty).table(cls)
+            column_builder = column_builder.name(key).table(cls)
             column_builder._db_type = get_args(db_ty)[0]
 
             if (value := getattr(cls, key, Missing)) is not Missing:
@@ -57,7 +55,6 @@ class Table:
         cls._metadata = TableMetadata(table_name or cls.__name__, columns)
 
     def __init__(self, **kwargs: Any):
-
         self._metadata.values = kwargs
 
     def __repr__(self) -> str:

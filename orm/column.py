@@ -1,16 +1,20 @@
 from __future__ import annotations
-from types import NoneType
 
-from typing import Generic, TypeVar, get_args, overload, TYPE_CHECKING, Any
+from types import NoneType
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, get_args, overload
+
 from typing_extensions import Self
 
-from .utils import T, Missing
-from .query import WhereQuery
+from .utils import Missing, T
+from .where_query import WhereQuery
 
 if TYPE_CHECKING:
     from .table import Table
 
+__all__ = ("Column", "ColumnBuilder", "primary", "foreign")
+
 T_P = TypeVar("T_P")
+
 
 class Column(Generic[T_P, T]):
     def __init__(self, table: type[Table], name: str, datatype: T, db_datatype: str, default: Any, optional: bool, primary: bool, foreign: Column[Any, T] | None):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, TypeVarTuple
+
 import asyncpg
 
 if TYPE_CHECKING:
@@ -11,6 +12,8 @@ T = TypeVar("T")
 T_T = TypeVar("T_T", bound="Table", covariant=True)
 T_OT = TypeVar("T_OT", bound="Table", covariant=True)
 T_Ts = TypeVarTuple("T_Ts")
+
+__all__ = ("eval_annotation", "Missing")
 
 
 def eval_annotation(

@@ -1,53 +1,18 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
+
 from typing_extensions import Self
 
-from orm.utils import Connection
-
-from .utils import T_T, T_OT, T, T_Ts
+from ..column import Column
+from ..utils import T_OT, T_T, T_Ts
+from ..where_query import WhereQuery
 
 if TYPE_CHECKING:
-    from .column import Column
-    from .table import Table
-    from .utils import Connection
+    from ..table import Table
+    from ..utils import Connection
 
-
-class WhereQuery:
-    def __init__(self, column: Column[Any, Any], value: Any, op: str):
-        self.column = column
-        self.value = value
-        self.op = op
-
-
-class QueryBuilder(Generic[T_T]):
-    def __init__(self, table: type[T_T]) -> None:
-        self.table = table
-
-    def build(self) -> tuple[str, list[Any]]:
-        raise NotImplementedError
-
-    async def execute(self, conn: Connection) -> int:
-        query, parameters = self.build()
-
-        res = await conn.execute(query, *parameters)
-
-        return int(res.split(" ")[1])
-
-    async def fetch(self, conn: Connection) -> list[T_T]:
-        query, parameters = self.build()
-
-        records = await conn.fetch(query, *parameters)
-
-        return [self.table(**record) for record in records]
-
-    async def fetchone(self, conn: Connection) -> T_T | None:
-        query, parameters = self.build()
-
-        record = await conn.fetchrow(query, *parameters)
-
-        if record:
-            return self.table(**record)
+from .base import QueryBuilder
 
 
 class SelectQueryBuilder(QueryBuilder[T_T]):
@@ -114,13 +79,9 @@ class SelectQueryBuilder(QueryBuilder[T_T]):
 
             for i, (joiner, where) in enumerate(self._wheres, 1):
                 if i == 1:
-                    where_clause.append(
-                        f"{where.column._to_full_name()} {where.op} ${i}"
-                    )
+                    where_clause.append(f"{where.column._to_full_name()} {where.op} ${i}")
                 else:
-                    where_clause.append(
-                        f"{joiner} {where.column._to_full_name()} {where.op} ${i}"
-                    )
+                    where_clause.append(f"{joiner} {where.column._to_full_name()} {where.op} ${i}")
 
             query_parts.append(f"where {' '.join(where_clause)}")
 
@@ -138,23 +99,17 @@ class SelectQueryBuilder(QueryBuilder[T_T]):
 
         return " ".join(query_parts), [where.value for _, where in self._wheres]
 
-    def join(
-        self, query: SelectQueryBuilder[T_OT]
-    ) -> JoinSelectQueryBuilder[T_T, T_OT]:
+    def join(self, query: SelectQueryBuilder[T_OT]) -> JoinSelectQueryBuilder[T_T, T_OT]:
         return JoinSelectQueryBuilder(self, query)
 
 
 class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
-    def __init__(
-        self, select_query: SelectQueryBuilder[T_T], join: SelectQueryBuilder[Any]
-    ):
+    def __init__(self, select_query: SelectQueryBuilder[T_T], join: SelectQueryBuilder[Any]):
+        super().__init__(select_query.table)
         self._wheres = select_query._wheres
-        self.table = select_query.table
         self.joins: list[SelectQueryBuilder[Table]] = [join]
 
-    def join(
-        self, query: SelectQueryBuilder[T_OT]
-    ) -> JoinSelectQueryBuilder[T_T, *T_Ts, T_OT]:
+    def join(self, query: SelectQueryBuilder[T_OT]) -> JoinSelectQueryBuilder[T_T, *T_Ts, T_OT]:
         self.joins.append(query)
         return cast(JoinSelectQueryBuilder[T_T, *T_Ts, T_OT], self)
 
@@ -163,12 +118,9 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
         columns: list[str] = []
         values: list[Any] = []
 
-
         for table in [self.table] + [join.table for join in self.joins]:
             for column in table._metadata.columns:
-                columns.append(
-                    f"{table._metadata.name}.{column.name} as {table._metadata.name}_{column.name}"
-                )
+                columns.append(f"{table._metadata.name}.{column.name} as {table._metadata.name}_{column.name}")
 
         query_parts.append(f"select {','.join(columns)} from {self.table._metadata.name}")
 
@@ -185,13 +137,9 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
                 if i == 1:
                     wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
                 else:
-                    wheres.append(
-                        f"{joiner} {where.column._to_full_name()} {where.op} {value}"
-                    )
+                    wheres.append(f"{joiner} {where.column._to_full_name()} {where.op} {value}")
 
-            query_parts.append(
-                f"inner join {join.table._metadata.name} on {' and '.join(wheres)}"
-            )
+            query_parts.append(f"inner join {join.table._metadata.name} on {' and '.join(wheres)}")
 
         wheres = []
 
@@ -205,9 +153,7 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
             if i == 1:
                 wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
             else:
-                wheres.append(
-                    f"{joiner} {where.column._to_full_name()} {where.op} {value}"
-                )
+                wheres.append(f"{joiner} {where.column._to_full_name()} {where.op} {value}")
 
         query_parts.append(f"where {' '.join(wheres)}" if wheres else "")
 
@@ -222,7 +168,6 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
 
         if (limit := self._limit) is not None:
             query_parts.append(f"limit {limit}")
-
 
         query = " ".join(query_parts)
 
@@ -243,10 +188,7 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
 
             return cast(
                 tuple[T_T, *T_Ts],
-                [
-                    table(**collections[table._metadata.name])
-                    for table in [self.table] + [join.table for join in self.joins]
-                ],
+                tuple([table(**collections[table._metadata.name.lower()]) for table in [self.table] + [join.table for join in self.joins]]),
             )
 
     async def fetch(self, conn: Connection) -> list[tuple[T_T, *T_Ts]]:
@@ -263,96 +205,6 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
 
                 collections.setdefault(table_name, {})["_".join(rest)] = value
 
-            output.append(
-                tuple(
-                    table(**collections[table._metadata.name])
-                    for table in [self.table] + [join.table for join in self.joins]
-                )
-            )
+            output.append(tuple(table(**collections[table._metadata.name]) for table in [self.table] + [join.table for join in self.joins]))
 
         return cast(list[tuple[T_T, *T_Ts]], output)
-
-
-class InsertQueryBuilder(QueryBuilder[T_T]):
-    def __init__(self, table: Table):
-        self.table = table
-
-    def build(self) -> tuple[str, list[Any]]:
-        columns = ", ".join([column.name for column in self.table._metadata.columns])
-        values = ", ".join(f"${i}" for i in range(len(self.table._metadata.columns)))
-
-        return (
-            f"insert into {self.table._metadata.name} ({columns}) values ({values})",
-            [getattr(self, column.name) for column in self.table._metadata.columns],
-        )
-
-    async def fetchone(self, conn: Connection) -> T_T:
-        row = await super().fetchone(conn)
-        assert row is not None
-        return row
-
-class UpdateQueryBuilder(QueryBuilder[T_T]):
-    def __init__(self, table: type[T_T]) -> None:
-        super().__init__(table)
-        self._set: list[tuple[Column[Any, Any], Any]] = []
-        self._wheres: list[WhereQuery] = []
-
-    def set(self, column: Column[Any, T], value: T) -> Self:
-        self._set.append((column, value))
-        return self
-
-    def where(self, query: WhereQuery) -> Self:
-        self._wheres.append(query)
-        return self
-
-    def build(self) -> tuple[str, list[str]]:
-        values: list[Any] = []
-
-        sets: list[str] = []
-
-        for column, value in self._set:
-            value = f"${len(values) + 1}"
-            values.append(value)
-
-            sets.append(f"{column._to_full_name()} = {value}")
-
-        wheres: list[str] = []
-
-        for where in self._wheres:
-            if isinstance(where.value, Column):
-                value = f"{where.value.table._metadata.name}.{where.value.name}"
-            else:
-                value = f"${len(values) + 1}"
-                values.append(where.value)
-
-            wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
-
-        if wheres:
-            where_clause = f"where {' and '.join(wheres)}"
-        else:
-            where_clause = ""
-
-        return (
-            f"update {self.table._metadata.name} set {','.join(sets)} {where_clause} returning *",
-            values,
-        )
-
-
-class CreateTableQueryBuilder(QueryBuilder[T_T]):
-    def build(self) -> tuple[str, list[str]]:
-        column_defs: list[str] = []
-
-        for column in self.table._metadata.columns:
-            col_type: list[str] = []
-
-            if column.primary:
-                col_type.append("primary key")
-
-            if other_column := column.foreign:
-                col_type.append(f"foreign key references {other_column.table._metadata.name}({other_column.name})")
-
-            column_def = f"{column.name} {column.db_datatype} {'' if column.optional else 'not null'} {col_type}"
-            column_defs.append(column_def)
-
-        query = f"create table {self.table._metadata.name} ({','.join(column_defs)})"
-        return query, []
