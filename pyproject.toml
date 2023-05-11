@@ -1,0 +1,23 @@
+[project]
+name = "orm"
+version = "0.1.0"
+description = "Add a short description here"
+authors = [
+    { name = "Zomatree", email = "me@zomatree.live" }
+]
+dependencies = ["asyncpg~=0.27.0", "asyncpg-stubs~=0.27.0"]
+readme = "README.md"
+requires-python = ">= 3.8"
+license = { text = "MIT" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.rye]
+managed = true
+
+[tool.pyright]
+reportPrivateUsage = false
+reportIncompatibleMethodOverride = false
+typeCheckingMode = "strict"
