@@ -13,7 +13,7 @@ T_T = TypeVar("T_T", bound="Table", covariant=True)
 T_OT = TypeVar("T_OT", bound="Table", covariant=True)
 T_Ts = TypeVarTuple("T_Ts")
 
-__all__ = ("eval_annotation", "Missing")
+__all__ = ("eval_annotation", "_Missing", "Missing")
 
 
 def eval_annotation(
