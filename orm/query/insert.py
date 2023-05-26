@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..utils import T_T
+from ..utils import T_T, Missing
 from .base import QueryBuilder
 
 if TYPE_CHECKING:
@@ -15,15 +15,30 @@ class InsertQueryBuilder(QueryBuilder[T_T]):
         self.table = table
 
     def build(self) -> tuple[str, list[Any]]:
-        columns = ", ".join([column.name for column in self.table._metadata.columns])
-        values = ", ".join(f"${i + 1}" for i in range(len(self.table._metadata.columns)))
+        columns: list[str] = []
+        values: list[Any] = []
+
+        for column in self.table._metadata.columns:
+            columns.append(f"`{column.name}`")
+
+            if (value := getattr(self.table, column.name, Missing)) is not Missing:
+                values.append(value)
+
+            elif default := column.default:
+                values.append(default())
+
+            else:
+                raise Exception(f"Missing required column {self.table.__class__.__name__}.{column.name}")
+
+        column_placeholders = [f"${i + 1}" for i in range(len(columns))]
 
         return (
-            f"insert into {self.table._metadata.name} ({columns}) values ({values}) returning *",
-            [self.table._metadata.values[column.name] for column in self.table._metadata.columns],
+            f"insert into `{self.table._metadata.name}` ({','.join(columns)}) values ({','.join(column_placeholders)})",
+            values,
         )
 
     async def fetchone(self, conn: Connection) -> T_T:
         row = await super().fetchone(conn)
         assert row is not None
+
         return row

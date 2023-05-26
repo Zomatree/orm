@@ -5,19 +5,22 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar, get_args, overload
 
 from typing_extensions import Self
 
-from .utils import Missing, T
 from .where_query import WhereQuery
+from typing import Callable, Generic, TypeVar, get_args, overload, TYPE_CHECKING, Any
+from typing_extensions import Self
+
+from .utils import T
 
 if TYPE_CHECKING:
     from .table import Table
 
-__all__ = ("Column", "ColumnBuilder", "primary", "foreign")
+__all__ = ("Column", "ColumnBuilder", "primary", "foreign", "default")
 
 T_P = TypeVar("T_P")
 
 
 class Column(Generic[T_P, T]):
-    def __init__(self, table: type[Table], name: str, datatype: T, db_datatype: str, default: Any, optional: bool, primary: bool, foreign: Column[Any, T] | None):
+    def __init__(self, table: type[Table], name: str, datatype: T, db_datatype: str, default: Callable[[], T] | None, optional: bool, primary: bool, foreign: Column[Any, T] | None):
         self.table = table
         self.name = name
         self.datatype = datatype
@@ -28,7 +31,7 @@ class Column(Generic[T_P, T]):
         self.foreign = foreign
 
     def _to_full_name(self) -> str:
-        return f"{self.table._metadata.name}.{self.name}"
+        return f"`{self.table._metadata.name}`.`{self.name}`"
 
     @overload
     def __get__(self, instance: None, _: type[Table]) -> Self:
@@ -42,7 +45,10 @@ class Column(Generic[T_P, T]):
         if instance is None:
             return self
 
-        return instance._metadata.values[self.name]
+        try:
+            return instance._metadata.values[self.name]
+        except:
+            raise AttributeError
 
     def __eq__(self, value: T | Self) -> WhereQuery:  # type: ignore
         return WhereQuery(self, value, "=")
@@ -56,13 +62,12 @@ class Column(Generic[T_P, T]):
     def __ne__(self, value: T | Self) -> WhereQuery:  # type: ignore
         return WhereQuery(self, value, "!=")
 
-
 class ColumnBuilder(Generic[T]):
     def __init__(self) -> None:
         self._name: str | None = None
         self._type: T | None = None
         self._db_type: str | None = None
-        self._default: Any = Missing
+        self._default: Callable[[], T] | None = None
         self._primary: bool = False
         self._foreign: Column[Any, Any] | None = None
         self._table: type[Table] | None = None
@@ -75,7 +80,7 @@ class ColumnBuilder(Generic[T]):
         self._type = type
         return self
 
-    def default(self, default: T) -> Self:
+    def default(self, default: Callable[[], T]) -> Self:
         self._default = default
         return self
 
@@ -101,6 +106,9 @@ class ColumnBuilder(Generic[T]):
         if not self._table:
             raise Exception("No table")
 
+        if self._foreign and self._type != self._foreign.datatype:
+            raise Exception(f"{self._table.__name__}.{self._name} does not match the foreign key type of {self._foreign.datatype.__name__}")
+
         return Column[Any, T](self._table, self._name, self._type, self._db_type, self._default, NoneType in get_args(self._type), self._primary, self._foreign)
 
 
@@ -110,3 +118,7 @@ def primary() -> ColumnBuilder[Any]:
 
 def foreign(column: Column[Any, T]) -> ColumnBuilder[T]:
     return ColumnBuilder[T]().foreign(column)
+
+
+def default(default: Callable[[], T]) -> ColumnBuilder[T]:
+    return ColumnBuilder[T]().default(default)

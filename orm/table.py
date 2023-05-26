@@ -5,8 +5,8 @@ from typing import Annotated, Any, ClassVar, Self, get_args, get_origin, get_typ
 from typing_extensions import Self
 
 from .column import Column, ColumnBuilder
-from .query import CreateTableQueryBuilder, InsertQueryBuilder, SelectQueryBuilder, UpdateQueryBuilder
-from .utils import Missing, eval_annotation
+from .query import CreateTableQueryBuilder, InsertQueryBuilder, SelectQueryBuilder, UpdateQueryBuilder, DeleteQueryBuilder
+from .utils import eval_annotation
 from .where_query import WhereQuery
 
 __all__ = ("TableMetadata", "Table")
@@ -37,6 +37,7 @@ class Table:
                 ty, column_builder = get_args(ann)
                 db_ty = get_args(ty)[0]
                 column_builder._type = eval_annotation(ty)
+
             else:
                 column_ty: type[Column[Any, Any]] = ann
                 (db_ty, ty) = get_args(column_ty)
@@ -45,14 +46,15 @@ class Table:
             column_builder = column_builder.name(key).table(cls)
             column_builder._db_type = get_args(db_ty)[0]
 
-            if (value := getattr(cls, key, Missing)) is not Missing:
-                column_builder = column_builder.default(value)
-
             column = column_builder.build()
             columns.append(column)
+
             setattr(cls, key, column)
 
         cls._metadata = TableMetadata(table_name or cls.__name__, columns)
+
+    # i really wish there was a way to statically type the kwargs
+    # if dataclass_transform let me map the values this could be possible
 
     def __init__(self, **kwargs: Any):
         self._metadata.values = kwargs
@@ -80,3 +82,7 @@ class Table:
 
     def insert(self) -> InsertQueryBuilder[Self]:
         return InsertQueryBuilder(self)
+
+    @classmethod
+    def delete(cls) -> DeleteQueryBuilder[Self]:
+        return DeleteQueryBuilder(cls)

@@ -17,8 +17,8 @@ class CreateTableQueryBuilder(QueryBuilder[T_T]):
             if other_column := column.foreign:
                 col_type.append(f"references {other_column.table._metadata.name}({other_column.name})")
 
-            column_def = f"{column.name} {column.db_datatype} {'' if column.optional else 'not null'} {' '.join(col_type)}"
+            column_def = f"`{column.name}` {column.db_datatype} {'' if column.optional else 'not null'} {' '.join(col_type)}"
             column_defs.append(column_def)
 
-        query = f"create table {self.table._metadata.name} ({','.join(column_defs)})"
+        query = f"create table `{self.table._metadata.name}` ({','.join(column_defs)})"
         return query, []

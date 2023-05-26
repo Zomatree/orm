@@ -7,6 +7,7 @@ from typing_extensions import Self
 from ..column import Column
 from ..utils import T_OT, T_T, T_Ts
 from ..where_query import WhereQuery
+from ..utils import T_T, T_OT, T_Ts
 
 if TYPE_CHECKING:
     from ..table import Table
@@ -71,8 +72,8 @@ class SelectQueryBuilder(QueryBuilder[T_T]):
         return self.where("and", query)
 
     def build(self) -> tuple[str, list[Any]]:
-        columns = ", ".join([column.name for column in self.table._metadata.columns])
-        query_parts = [f"select {columns} from {self.table._metadata.name}"]
+        columns = ", ".join([f"`{column.name}`" for column in self.table._metadata.columns])
+        query_parts = [f"select {columns} from `{self.table._metadata.name}`"]
 
         if self._wheres:
             where_clause: list[str] = []
@@ -86,13 +87,13 @@ class SelectQueryBuilder(QueryBuilder[T_T]):
             query_parts.append(f"where {' '.join(where_clause)}")
 
         for column in self._groups:
-            query_parts.append(f"group by {column._to_full_name()}")
+            query_parts.append(f"group by `{column._to_full_name()}`")
 
         if order := self._order:
             column, ty = order
 
             if isinstance(column, tuple):
-                query_parts.append(f"order by {column._to_full_name()} {ty}")
+                query_parts.append(f"order by `{column._to_full_name()}` {ty}")
 
         if (limit := self._limit) is not None:
             query_parts.append(f"limit {limit}")
@@ -129,7 +130,7 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
 
             for i, (joiner, where) in enumerate(join._wheres, 1):
                 if isinstance(where.value, Column):
-                    value = f"{where.value.table._metadata.name}.{where.value.name}"
+                    value = f"`{where.value.table._metadata.name}`.`{where.value.name}`"
                 else:
                     value = f"${len(values) + 1}"
                     values.append(where.value)
@@ -139,13 +140,13 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
                 else:
                     wheres.append(f"{joiner} {where.column._to_full_name()} {where.op} {value}")
 
-            query_parts.append(f"inner join {join.table._metadata.name} on {' and '.join(wheres)}")
+            query_parts.append(f"inner join `{join.table._metadata.name}` on {' and '.join(wheres)}")
 
         wheres = []
 
         for i, (joiner, where) in enumerate(self._wheres, 1):
             if isinstance(where.value, Column):
-                value = f"{where.value.table._metadata.name}.{where.value.name}"
+                value = f"`{where.value.table._metadata.name}`.`{where.value.name}`"
             else:
                 value = f"${len(values) + 1}"
                 values.append(where.value)
