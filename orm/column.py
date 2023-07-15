@@ -50,7 +50,7 @@ class Column(Generic[T_P, T]):
         except:
             raise AttributeError
 
-    def __eq__(self, value: T | Self) -> WhereQuery:  # type: ignore
+    def __eq__(self, value: T | Self) -> WhereQuery:
         return WhereQuery(self, value, "=")
 
     def __lt__(self, value: T | Self) -> WhereQuery:
@@ -59,7 +59,7 @@ class Column(Generic[T_P, T]):
     def __le__(self, value: T | Self) -> WhereQuery:
         return WhereQuery(self, value, "<=")
 
-    def __ne__(self, value: T | Self) -> WhereQuery:  # type: ignore
+    def __ne__(self, value: T | Self) -> WhereQuery:
         return WhereQuery(self, value, "!=")
 
 class ColumnBuilder(Generic[T]):

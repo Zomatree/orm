@@ -38,7 +38,4 @@ class QueryBuilder(Generic[T_T]):
         record = await conn.fetchrow(query, *parameters)
 
         if record:
-            if isinstance(self.table, type):
-                return self.table(**record)
-            else:
-                return self.table.__class__(**record)
+            return self.table(**record)

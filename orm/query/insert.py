@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 class InsertQueryBuilder(QueryBuilder[T_T]):
     def __init__(self, table: Table):
-        self.table = table
+        self.table_instance = table
+        self.table = type(table)
 
     def build(self) -> tuple[str, list[Any]]:
         columns: list[str] = []
@@ -21,14 +22,14 @@ class InsertQueryBuilder(QueryBuilder[T_T]):
         for column in self.table._metadata.columns:
             columns.append(f"`{column.name}`")
 
-            if (value := getattr(self.table, column.name, Missing)) is not Missing:
+            if (value := getattr(self.table_instance, column.name, Missing)) is not Missing:
                 values.append(value)
 
             elif default := column.default:
                 values.append(default())
 
             else:
-                raise Exception(f"Missing required column {self.table.__class__.__name__}.{column.name}")
+                raise Exception(f"Missing required column {self.table.__name__}.{column.name}")
 
         column_placeholders = [f"${i + 1}" for i in range(len(columns))]
 
