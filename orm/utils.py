@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 T_T = TypeVar("T_T", bound="Table", covariant=True)
 T_OT = TypeVar("T_OT", bound="Table", covariant=True)
-T_Ts = TypeVarTuple("T_Ts")
+Extras = TypeVarTuple("Extras")
 
 __all__ = ("eval_annotation", "_Missing", "Missing")
 

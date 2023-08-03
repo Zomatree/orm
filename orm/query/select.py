@@ -1,22 +1,21 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
-
-from typing_extensions import Self
+from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload, Self
 
 from ..column import Column
-from ..utils import T_OT, T_T, T_Ts
+from ..utils import T, T_OT, T_T, Extras
 from ..where_query import WhereQuery
-from ..utils import T_T, T_OT, T_Ts
+from ..utils import T_T, T_OT, Extras
+
+from .base import QueryBuilder
+from .column import ColumnQueryBuilder
 
 if TYPE_CHECKING:
     from ..table import Table
     from ..utils import Connection
+    from asyncpg import Record
 
-from .base import QueryBuilder
-
-
-class SelectQueryBuilder(QueryBuilder[T_T]):
+class SelectQueryBuilder(QueryBuilder[T_T], Generic[T_T]):
     def __init__(self, table: type[T_T]) -> None:
         super().__init__(table)
         self._wheres: list[tuple[str, WhereQuery]] = []
@@ -100,47 +99,63 @@ class SelectQueryBuilder(QueryBuilder[T_T]):
 
         return " ".join(query_parts), [where.value for _, where in self._wheres]
 
-    def join(self, query: SelectQueryBuilder[T_OT]) -> JoinSelectQueryBuilder[T_T, T_OT]:
-        return JoinSelectQueryBuilder(self, query)
+    def join(self, query: SelectQueryBuilder[T_OT]) -> TupleSelectQueryBuilder[T_T, *T_OT]:
+        return TupleSelectQueryBuilder(self, query)
 
+    def column(self, query: ColumnQueryBuilder[T]) -> TupleSelectQueryBuilder[T_T, T]:
+        return TupleSelectQueryBuilder(self, query)
 
-class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
-    def __init__(self, select_query: SelectQueryBuilder[T_T], join: SelectQueryBuilder[Any]):
+class TupleSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *Extras]):
+    def __init__(self, select_query: SelectQueryBuilder[T_T], extra: SelectQueryBuilder[Any] | ColumnQueryBuilder[Any]):
         super().__init__(select_query.table)
         self._wheres = select_query._wheres
-        self.joins: list[SelectQueryBuilder[Table]] = [join]
+        self._extras: list[SelectQueryBuilder[Table] | ColumnQueryBuilder[Any]] = [extra]
 
-    def join(self, query: SelectQueryBuilder[T_OT]) -> JoinSelectQueryBuilder[T_T, *T_Ts, T_OT]:
-        self.joins.append(query)
-        return cast(JoinSelectQueryBuilder[T_T, *T_Ts, T_OT], self)
+    def join(self, query: SelectQueryBuilder[T_OT]) -> TupleSelectQueryBuilder[T_T, *Extras, T_OT]:
+        self._extras.append(query)
+        return cast(TupleSelectQueryBuilder[T_T, *Extras, T_OT], self)
 
-    def build(self) -> tuple[str, list[str]]:
+    def column(self, query: ColumnQueryBuilder[T]) -> TupleSelectQueryBuilder[T_T, *Extras, T]:
+        self._extras.append(query)
+        return cast(TupleSelectQueryBuilder[T_T, *Extras, T], self)
+
+    def build(self) -> tuple[str, list[Any]]:
         query_parts: list[str] = []
         columns: list[str] = []
         values: list[Any] = []
 
-        for table in [self.table] + [join.table for join in self.joins]:
-            for column in table._metadata.columns:
-                columns.append(f"{table._metadata.name}.{column.name} as {table._metadata.name}_{column.name}")
+        for column in self.table._metadata.columns:
+            columns.append(f"{self.table._metadata.name}.{column.name} as table_{self.table._metadata.name}_{column.name}")
+
+        for i, extra in enumerate(self._extras):
+            if isinstance(extra, SelectQueryBuilder):
+                for column in extra.table._metadata.columns:
+                    columns.append(f"{extra.table._metadata.name}.{column.name} as table_{extra.table._metadata.name}_{column.name}")
+            else:
+                extra_query, extra_values = extra.build()
+
+                columns.append(f"{extra_query} as extra_{i}")
+                values.extend(extra_values)
 
         query_parts.append(f"select {','.join(columns)} from {self.table._metadata.name}")
 
-        for join in self.joins:
-            wheres: list[str] = []
+        for extra in self._extras:
+            if isinstance(extra, SelectQueryBuilder):
+                wheres: list[str] = []
 
-            for i, (joiner, where) in enumerate(join._wheres, 1):
-                if isinstance(where.value, Column):
-                    value = f"`{where.value.table._metadata.name}`.`{where.value.name}`"
-                else:
-                    value = f"${len(values) + 1}"
-                    values.append(where.value)
+                for i, (joiner, where) in enumerate(extra._wheres, 1):
+                    if isinstance(where.value, Column):
+                        value = f"`{where.value.table._metadata.name}`.`{where.value.name}`"
+                    else:
+                        value = f"${len(values) + 1}"
+                        values.append(where.value)
 
-                if i == 1:
-                    wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
-                else:
-                    wheres.append(f"{joiner} {where.column._to_full_name()} {where.op} {value}")
+                    if i == 1:
+                        wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
+                    else:
+                        wheres.append(f"{joiner} {where.column._to_full_name()} {where.op} {value}")
 
-            query_parts.append(f"inner join `{join.table._metadata.name}` on {' and '.join(wheres)}")
+                query_parts.append(f"inner join `{extra.table._metadata.name}` on {' and '.join(wheres)}")
 
         wheres = []
 
@@ -174,38 +189,35 @@ class JoinSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *T_Ts]):
 
         return query, values
 
-    async def fetchone(self, conn: Connection) -> tuple[T_T, *T_Ts] | None:
+    def _build_record(self, record: Record) -> tuple[T_T, *Extras]:
+        collections: list[dict[str, Any] | Any] = []
+        last = None
+
+        for column, value in record.items():
+            column_type, rest = column.split("_", 1)
+
+            if column_type == "table":
+                table_name, column_name = rest.split("_", 1)
+
+                if last == table_name:
+                    collections[-1][column_name] = value
+                else:
+                    last = table_name
+                    collections.append({column_name: value})
+            else:
+                collections.append(value)
+
+        return cast(tuple[T_T, *Extras], tuple(collections))
+
+    async def fetchone(self, conn: Connection) -> tuple[T_T, *Extras] | None:
         query, parameters = self.build()
+        record = await conn.fetchrow(query, *parameters)
 
-        row = await conn.fetchrow(query, *parameters)
+        if record:
+            return self._build_record(record)
 
-        if row:
-            collections: dict[str, dict[str, Any]] = {}
-
-            for column, value in row.items():
-                table_name, *rest = column.split("_")
-
-                collections.setdefault(table_name, {})["_".join(rest)] = value
-
-            return cast(
-                tuple[T_T, *T_Ts],
-                tuple([table(**collections[table._metadata.name.lower()]) for table in [self.table] + [join.table for join in self.joins]]),
-            )
-
-    async def fetch(self, conn: Connection) -> list[tuple[T_T, *T_Ts]]:
+    async def fetch(self, conn: Connection) -> list[tuple[T_T, *Extras]]:
         query, parameters = self.build()
+        records = await conn.fetch(query, *parameters)
 
-        rows = await conn.fetch(query, *parameters)
-        output: list[tuple[Table, ...]] = []
-
-        for row in rows:
-            collections: dict[str, dict[str, Any]] = {}
-
-            for column, value in row.items():
-                table_name, *rest = column.split("_")
-
-                collections.setdefault(table_name, {})["_".join(rest)] = value
-
-            output.append(tuple(table(**collections[table._metadata.name]) for table in [self.table] + [join.table for join in self.joins]))
-
-        return cast(list[tuple[T_T, *T_Ts]], output)
+        return [self._build_record(record) for record in records]
