@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, overload
 
 from typing_extensions import Self
 
@@ -14,18 +14,48 @@ class UpdateQueryBuilder(QueryBuilder[T_T]):
     def __init__(self, table: type[T_T]) -> None:
         super().__init__(table)
         self._set: list[tuple[Column[Any, Any], Any]] = []
-        self._wheres: list[WhereQuery] = []
+        self._wheres: list[tuple[str, WhereQuery]] = []
 
     def set(self, column: Column[Any, T], value: T) -> Self:
         self._set.append((column, value))
         return self
 
-    def where(self, query: WhereQuery) -> Self:
-        self._wheres.append(query)
+    @overload
+    def where(self, arg: Literal["and", "AND", "or", "OR"], query: WhereQuery) -> Self:
+        ...
+
+    @overload
+    def where(self, arg: WhereQuery) -> Self:
+        ...
+
+    def where(
+        self,
+        arg: Literal["and", "AND", "or", "OR"] | WhereQuery,
+        query: WhereQuery | None = None,
+    ) -> Self:
+        if query:
+            assert arg in ["and", "AND", "or", "OR"]
+
+            where = (arg, query)
+        else:
+            assert isinstance(arg, WhereQuery)
+
+            where = ("and", arg)
+
+        self._wheres.append(where)
         return self
 
+    def or_where(self, query: WhereQuery) -> Self:
+        return self.where("or", query)
+
+    def and_where(self, query: WhereQuery) -> Self:
+        return self.where("and", query)
+
     def build(self) -> tuple[str, list[str]]:
+        query_parts: list[str] = []
         values: list[Any] = []
+
+        query_parts.append(f"update \"{self.table._metadata.name}\"")
 
         sets: list[str] = []
 
@@ -35,23 +65,28 @@ class UpdateQueryBuilder(QueryBuilder[T_T]):
 
             sets.append(f"{column._to_full_name()} = {value}")
 
+        query_parts.append(f"set {','.join(sets)}")
+
         wheres: list[str] = []
 
-        for where in self._wheres:
+        for i, (joiner, where) in enumerate(self._wheres, 1):
             if isinstance(where.value, Column):
                 value = f"\"{where.value.table._metadata.name}\".\"{where.value.name}\""
             else:
                 value = f"${len(values) + 1}"
                 values.append(where.value)
 
-            wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
+            if i == 1:
+                wheres.append(f"{where.column._to_full_name()} {where.op} {value}")
+            else:
+                wheres.append(f"{joiner} {where.column._to_full_name()} {where.op} {value}")
 
         if wheres:
-            where_clause = f"where {' and '.join(wheres)}"
-        else:
-            where_clause = ""
+            query_parts.append(f"where {' '.join(wheres)}")
+
+        query_parts.append("returning *")
 
         return (
-            f"update {self.table._metadata.name} set {','.join(sets)} {where_clause} returning *",
+            " ".join(query_parts),
             values,
         )

@@ -15,7 +15,7 @@ class CreateTableQueryBuilder(QueryBuilder[T_T]):
                 col_type.append("primary key")
 
             if other_column := column.foreign:
-                col_type.append(f"references {other_column.table._metadata.name}({other_column.name})")
+                col_type.append(f"references \"{other_column.table._metadata.name}\"({other_column._to_full_name})")
 
             column_def = f"{column._to_full_name()} {column.db_datatype} {'' if column.optional else 'not null'} {' '.join(col_type)}"
             column_defs.append(column_def)

@@ -126,12 +126,12 @@ class TupleSelectQueryBuilder(SelectQueryBuilder[T_T], Generic[T_T, *Extras]):
         values: list[Any] = []
 
         for column in self.table._metadata.columns:
-            columns.append(f"{self.table._metadata.name}.{column.name} as table_{self.table._metadata.name}_{column.name}")
+            columns.append(f"{column._to_full_name()} as table_{self.table._metadata.name}_{column.name}")
 
         for i, extra in enumerate(self._extras):
             if isinstance(extra, SelectQueryBuilder):
                 for column in extra.table._metadata.columns:
-                    columns.append(f"{extra.table._metadata.name}.{column.name} as table_{extra.table._metadata.name}_{column.name}")
+                    columns.append(f"{column._to_full_name()} as table_{extra.table._metadata.name}_{column.name}")
             else:
                 extra_query, extra_values = extra.build()
 

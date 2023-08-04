@@ -34,7 +34,7 @@ class InsertQueryBuilder(QueryBuilder[T_T]):
         column_placeholders = [f"${i + 1}" for i in range(len(columns))]
 
         return (
-            f"insert into \"{self.table._metadata.name}\" ({','.join(columns)}) values ({','.join(column_placeholders)})",
+            f"insert into \"{self.table._metadata.name}\"({','.join(columns)}) values ({','.join(column_placeholders)})",
             values,
         )
 
