@@ -20,7 +20,7 @@ class InsertQueryBuilder(QueryBuilder[T_T]):
         values: list[Any] = []
 
         for column in self.table._metadata.columns:
-            columns.append(f"`{column.name}`")
+            columns.append(column._to_full_name())
 
             if (value := getattr(self.table_instance, column.name, Missing)) is not Missing:
                 values.append(value)
@@ -34,7 +34,7 @@ class InsertQueryBuilder(QueryBuilder[T_T]):
         column_placeholders = [f"${i + 1}" for i in range(len(columns))]
 
         return (
-            f"insert into `{self.table._metadata.name}` ({','.join(columns)}) values ({','.join(column_placeholders)})",
+            f"insert into \"{self.table._metadata.name}\" ({','.join(columns)}) values ({','.join(column_placeholders)})",
             values,
         )
 

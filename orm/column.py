@@ -31,7 +31,7 @@ class Column(Generic[T_P, T]):
         self.foreign = foreign
 
     def _to_full_name(self) -> str:
-        return f"`{self.table._metadata.name}`.`{self.name}`"
+        return f"\"{self.table._metadata.name}\".\"{self.name}\""
 
     @overload
     def __get__(self, instance: None, _: type[Table]) -> Self:

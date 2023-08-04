@@ -39,7 +39,7 @@ class UpdateQueryBuilder(QueryBuilder[T_T]):
 
         for where in self._wheres:
             if isinstance(where.value, Column):
-                value = f"`{where.value.table._metadata.name}`.`{where.value.name}`"
+                value = f"\"{where.value.table._metadata.name}\".\"{where.value.name}\""
             else:
                 value = f"${len(values) + 1}"
                 values.append(where.value)
